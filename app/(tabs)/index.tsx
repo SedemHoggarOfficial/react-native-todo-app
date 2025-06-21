@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Task class for OOP approach, with completed property
+// Task class (OOP style)
 class Task {
   id: string;
   title: string;
@@ -17,6 +18,38 @@ class Task {
 export default function TodoApp() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskTitle, setTaskTitle] = useState('');
+
+  // Load tasks from AsyncStorage on start
+  useEffect(() => {
+    const loadTasks = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@tasks');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          // Rehydrate class instances
+          const loadedTasks = parsed.map((t: any) => new Task(t.id, t.title, t.completed));
+          setTasks(loadedTasks);
+        }
+      } catch (e) {
+        console.error('Failed to load tasks', e);
+      }
+    };
+
+    loadTasks();
+  }, []);
+
+  // Save tasks to AsyncStorage when they change
+  useEffect(() => {
+    const saveTasks = async () => {
+      try {
+        await AsyncStorage.setItem('@tasks', JSON.stringify(tasks));
+      } catch (e) {
+        console.error('Failed to save tasks', e);
+      }
+    };
+
+    saveTasks();
+  }, [tasks]);
 
   const addTask = () => {
     if (taskTitle.trim() === '') return;

@@ -19,6 +19,9 @@ export default function TodoApp() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskTitle, setTaskTitle] = useState('');
 
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+
   // Load tasks from AsyncStorage on start
   useEffect(() => {
     const loadTasks = async () => {
@@ -29,6 +32,7 @@ export default function TodoApp() {
           // Rehydrate class instances
           const loadedTasks = parsed.map((t: any) => new Task(t.id, t.title, t.completed));
           setTasks(loadedTasks);
+          //console.log('Loaded tasks:', loadedTasks);
         }
       } catch (e) {
         console.error('Failed to load tasks', e);
@@ -43,6 +47,7 @@ export default function TodoApp() {
     const saveTasks = async () => {
       try {
         await AsyncStorage.setItem('@tasks', JSON.stringify(tasks));
+        //console.log('Saved tasks:', tasks);
       } catch (e) {
         console.error('Failed to save tasks', e);
       }
@@ -70,26 +75,65 @@ export default function TodoApp() {
     );
   };
 
-  const renderItem = ({ item }: { item: Task }) => (
-    <View style={styles.taskItem}>
-      <TouchableOpacity onPress={() => toggleTask(item.id)} style={styles.toggleButton}>
-        <Text style={[styles.toggleButtonText, item.completed && styles.completedCheck]}>
-          {item.completed ? '✓' : ''}
-        </Text>
-      </TouchableOpacity>
-      <Text
-        style={[
-          styles.taskText,
-          item.completed && styles.completedText,
-        ]}
-      >
-        {item.title}
-      </Text>
-      <TouchableOpacity onPress={() => removeTask(item.id)} style={styles.deleteButton}>
-        <Text style={styles.deleteButtonText}>Delete</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  const renderItem = ({ item }: { item: Task }) => {
+    const isEditing = editingTaskId === item.id;
+
+    return (
+      <View style={styles.taskItem}>
+        {/* Toggle complete */}
+        <TouchableOpacity onPress={() => toggleTask(item.id)} style={styles.toggleButton}>
+          <Text style={[styles.toggleButtonText, item.completed && styles.completedCheck]}>
+            {item.completed ? '✓' : ''}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Title or Editable TextInput */}
+        <View style={{ flex: 1 }}>
+          {isEditing ? (
+            <TextInput
+              style={[styles.taskText, styles.editInput]}
+              value={editingTitle}
+              onChangeText={setEditingTitle}
+              onSubmitEditing={() => {
+                const updated = tasks.map(task =>
+                  task.id === item.id
+                    ? new Task(task.id, editingTitle, task.completed)
+                    : task
+                );
+                setTasks(updated);
+                setEditingTaskId(null);
+              }}
+              onBlur={() => setEditingTaskId(null)}
+              autoFocus
+            />
+          ) : (
+            <TouchableOpacity
+              onLongPress={() => {
+                setEditingTaskId(item.id);
+                setEditingTitle(item.title);
+              }}
+            >
+              <Text
+                style={[
+                  styles.taskText,
+                  item.completed && styles.completedText,
+                ]}
+              >
+                {item.title}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Delete button */}
+        <TouchableOpacity onPress={() => removeTask(item.id)} style={styles.deleteButton}>
+          <Text style={styles.deleteButtonText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+
 
   return (
     <View style={styles.container}>
@@ -215,4 +259,12 @@ const styles = StyleSheet.create({
     marginTop: 32,
     fontSize: 16,
   },
+  editInput: {
+    borderBottomWidth: 1,
+    borderColor: '#007bff',
+    paddingVertical: 2,
+    fontSize: 16,
+    color: '#222',
+  },
+
 });

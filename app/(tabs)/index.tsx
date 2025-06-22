@@ -1,162 +1,187 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
+  LayoutAnimation,
+  UIManager,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import * as Animatable from 'react-native-animatable';
+import AppLoading from 'expo-app-loading';
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_600SemiBold,
+} from '@expo-google-fonts/poppins';
 
-// Task class (OOP style)
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 class Task {
   id: string;
   title: string;
   completed: boolean;
+  isEditing: boolean;
 
-  constructor(id: string, title: string, completed = false) {
+  constructor(id: string, title: string, completed = false, isEditing = false) {
     this.id = id;
     this.title = title;
     this.completed = completed;
+    this.isEditing = isEditing;
   }
 }
 
 export default function TodoApp() {
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_600SemiBold,
+  });
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskTitle, setTaskTitle] = useState('');
 
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState('');
-
-  // Load tasks from AsyncStorage on start
   useEffect(() => {
-    const loadTasks = async () => {
-      try {
-        const stored = await AsyncStorage.getItem('@tasks');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          // Rehydrate class instances
-          const loadedTasks = parsed.map((t: any) => new Task(t.id, t.title, t.completed));
-          setTasks(loadedTasks);
-          //console.log('Loaded tasks:', loadedTasks);
-        }
-      } catch (e) {
-        console.error('Failed to load tasks', e);
-      }
-    };
-
     loadTasks();
   }, []);
 
-  // Save tasks to AsyncStorage when they change
   useEffect(() => {
-    const saveTasks = async () => {
-      try {
-        await AsyncStorage.setItem('@tasks', JSON.stringify(tasks));
-        //console.log('Saved tasks:', tasks);
-      } catch (e) {
-        console.error('Failed to save tasks', e);
-      }
-    };
-
     saveTasks();
   }, [tasks]);
+
+  const saveTasks = async () => {
+    await AsyncStorage.setItem('TASKS', JSON.stringify(tasks));
+  };
+
+  const loadTasks = async () => {
+    const json = await AsyncStorage.getItem('TASKS');
+    if (json) setTasks(JSON.parse(json));
+  };
 
   const addTask = () => {
     if (taskTitle.trim() === '') return;
     const newTask = new Task(Date.now().toString(), taskTitle);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setTasks([...tasks, newTask]);
     setTaskTitle('');
   };
 
   const removeTask = (id: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setTasks(tasks.filter(task => task.id !== id));
   };
 
   const toggleTask = (id: string) => {
-    setTasks(tasks =>
-      tasks.map(task =>
-        task.id === id ? new Task(task.id, task.title, !task.completed) : task
-      )
-    );
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setTasks(tasks.map(task =>
+      task.id === id
+        ? new Task(task.id, task.title, !task.completed, task.isEditing)
+        : task
+    ));
   };
 
-  const renderItem = ({ item }: { item: Task }) => {
-    const isEditing = editingTaskId === item.id;
+  const editTask = (id: string) => {
+    setTasks(tasks.map(task =>
+      task.id === id ? { ...task, isEditing: true } : { ...task, isEditing: false }
+    ));
+  };
 
-    return (
+  const cancelEdit = () => {
+    setTasks(tasks.map(task => ({ ...task, isEditing: false })));
+    Keyboard.dismiss();
+  };
+
+  const updateTask = (id: string, newTitle: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setTasks(tasks.map(task =>
+      task.id === id ? new Task(task.id, newTitle, task.completed, false) : task
+    ));
+  };
+
+  const renderItem = ({ item }: { item: Task }) => (
+    <Animatable.View
+      animation="fadeInUp"
+      duration={400}
+      style={styles.animatedWrapper}
+    >
       <View style={styles.taskItem}>
-        {/* Toggle complete */}
-        <TouchableOpacity onPress={() => toggleTask(item.id)} style={styles.toggleButton}>
-          <Text style={[styles.toggleButtonText, item.completed && styles.completedCheck]}>
-            {item.completed ? '✓' : ''}
-          </Text>
+        <TouchableOpacity onPress={() => toggleTask(item.id)}>
+          <Ionicons
+            name={item.completed ? 'checkmark-circle' : 'ellipse-outline'}
+            size={24}
+            color={item.completed ? '#28a745' : '#007bff'}
+            style={styles.checkIcon}
+          />
         </TouchableOpacity>
-
-        {/* Title or Editable TextInput */}
-        <View style={{ flex: 1 }}>
-          {isEditing ? (
-            <TextInput
-              style={[styles.taskText, styles.editInput]}
-              value={editingTitle}
-              onChangeText={setEditingTitle}
-              onSubmitEditing={() => {
-                const updated = tasks.map(task =>
-                  task.id === item.id
-                    ? new Task(task.id, editingTitle, task.completed)
-                    : task
-                );
-                setTasks(updated);
-                setEditingTaskId(null);
-              }}
-              onBlur={() => setEditingTaskId(null)}
-              autoFocus
-            />
-          ) : (
-            <TouchableOpacity
-              onLongPress={() => {
-                setEditingTaskId(item.id);
-                setEditingTitle(item.title);
-              }}
-            >
-              <Text
-                style={[
-                  styles.taskText,
-                  item.completed && styles.completedText,
-                ]}
-              >
-                {item.title}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Delete button */}
-        <TouchableOpacity onPress={() => removeTask(item.id)} style={styles.deleteButton}>
-          <Text style={styles.deleteButtonText}>Delete</Text>
+        {item.isEditing ? (
+          <TextInput
+            value={item.title}
+            onChangeText={(text) => updateTask(item.id, text)}
+            onSubmitEditing={() => updateTask(item.id, item.title)}
+            style={[styles.taskTextInput, { fontFamily: 'Poppins_400Regular' }]}
+            autoFocus
+          />
+        ) : (
+          <Text
+            style={[styles.taskText, item.completed && styles.completedText]}
+            onLongPress={() => editTask(item.id)}
+          >
+            {item.title}
+          </Text>
+        )}
+        {item.isEditing && (
+          <TouchableOpacity onPress={cancelEdit} style={styles.iconButton}>
+            <Ionicons name="close" size={18} color="#888" />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={() => editTask(item.id)} style={styles.iconButton}>
+          <Ionicons name="pencil" size={18} color="#007bff" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => removeTask(item.id)} style={styles.iconButton}>
+          <Ionicons name="trash" size={18} color="#dc3545" />
         </TouchableOpacity>
       </View>
-    );
-  };
+    </Animatable.View>
+  );
 
-
+  if (!fontsLoaded) return <AppLoading />;
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>Todo App</Text>
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Add a new task"
-          value={taskTitle}
-          onChangeText={setTaskTitle}
-          placeholderTextColor="#888"
+    <TouchableWithoutFeedback onPress={cancelEdit}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Text style={styles.heading}>My Tasks</Text>
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Add a new task"
+            value={taskTitle}
+            onChangeText={setTaskTitle}
+            placeholderTextColor="#888"
+          />
+          <TouchableOpacity onPress={addTask} style={styles.addButton}>
+            <Ionicons name="add" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        <FlatList
+          data={tasks}
+          keyExtractor={item => item.id}
+          renderItem={renderItem}
+          ListEmptyComponent={<Text style={styles.emptyText}>No tasks yet.</Text>}
         />
-        <TouchableOpacity onPress={addTask} style={styles.addButton}>
-          <Text style={styles.addButtonText}>Add</Text>
-        </TouchableOpacity>
-      </View>
-      <FlatList
-        data={tasks}
-        keyExtractor={item => item.id}
-        renderItem={renderItem}
-        ListEmptyComponent={<Text style={styles.emptyText}>No tasks yet.</Text>}
-      />
-    </View>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -173,6 +198,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     color: '#222',
     alignSelf: 'center',
+    fontFamily: 'Poppins_600SemiBold',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -188,83 +214,58 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     fontSize: 16,
     color: '#222',
-    marginRight: 8,
+    fontFamily: 'Poppins_400Regular',
   },
   addButton: {
     backgroundColor: '#007bff',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+    marginLeft: 8,
   },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+  animatedWrapper: {
+    overflow: 'hidden',
   },
   taskItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    padding: 16,
+    padding: 12,
     borderRadius: 8,
     marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    elevation: 1,
   },
-  toggleButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#007bff',
-    justifyContent: 'center',
-    alignItems: 'center',
+  checkIcon: {
     marginRight: 12,
-    backgroundColor: '#fff',
-  },
-  toggleButtonText: {
-    fontSize: 18,
-    color: '#007bff',
-    fontWeight: 'bold',
-  },
-  completedCheck: {
-    color: '#28a745',
   },
   taskText: {
     flex: 1,
     fontSize: 16,
     color: '#222',
+    fontFamily: 'Poppins_400Regular',
   },
   completedText: {
     textDecorationLine: 'line-through',
     color: '#888',
   },
-  deleteButton: {
-    backgroundColor: '#dc3545',
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+  taskTextInput: {
+    flex: 1,
+    fontSize: 16,
+    borderBottomWidth: 1,
+    borderColor: '#ccc',
+    paddingVertical: 2,
+    color: '#222',
   },
-  deleteButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+  iconButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
   emptyText: {
     textAlign: 'center',
     color: '#888',
     marginTop: 32,
     fontSize: 16,
+    fontFamily: 'Poppins_400Regular',
   },
-  editInput: {
-    borderBottomWidth: 1,
-    borderColor: '#007bff',
-    paddingVertical: 2,
-    fontSize: 16,
-    color: '#222',
-  },
-
 });
